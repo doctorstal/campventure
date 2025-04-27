@@ -94,6 +94,7 @@ func (p *Player) Jump() {
 
 // DrawOptions implements Animator.
 func (p *Player) DrawOptions() *ebiten.DrawImageOptions {
+	// Flip
 	opts := ebiten.DrawImageOptions{}
 	if p.direction == DirecitonLeft {
 		opts.GeoM.Translate(-p.width/2, 0)

@@ -1,28 +1,23 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 
-	"github.com/doctorstal/campventure/entities"
+	"github.com/doctorstal/campventure/scenes"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	resource "github.com/quasilyte/ebitengine-resource"
 )
 
 type CampVenture struct {
-	Player *entities.Player
+	sceneMap      map[scenes.SceneId]scenes.Scene
+	activeSceneId scenes.SceneId
 }
 
 // Draw implements ebiten.Game.
 func (c *CampVenture) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{33, 66, 99, 255})
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Vertical speed: %f", c.Player.Dy))
 
-	opts := c.Player.DrawOptions()
-	opts.GeoM.Translate(c.Player.Bounds().Lo().X, c.Player.Bounds().Lo().Y)
-	opts.GeoM.Scale(4, 4)
-	screen.DrawImage(c.Player.Img(), opts)
+	c.sceneMap[c.activeSceneId].Draw(screen)
 }
 
 // Layout implements ebiten.Game.
@@ -32,29 +27,31 @@ func (c *CampVenture) Layout(outsideWidth int, outsideHeight int) (screenWidth i
 
 // Update implements ebiten.Game.
 func (c *CampVenture) Update() error {
-	if ebiten.IsKeyPressed(ebiten.KeyRight) {
-		c.Player.GoRight()
+	nextSceneId := c.sceneMap[c.activeSceneId].Update()
+	if nextSceneId == scenes.SceneExit {
+		c.sceneMap[c.activeSceneId].OnExit()
+		return ebiten.Termination
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		c.Player.GoLeft()
-	}
-	playerFalls := c.Player.Bounds().Hi().Y < 240
-	if playerFalls {
-		c.Player.Dy += 0.3
-	} else if c.Player.Dy > 0 {
-		c.Player.Dy = 0
+	if nextSceneId != c.activeSceneId {
+		nextScene := c.sceneMap[nextSceneId]
+		// if not loaded load scene
+		if !nextScene.IsLoaded() {
+			nextScene.FirstLoad()
+		}
+		c.sceneMap[c.activeSceneId].OnExit()
+		nextScene.OnEnter()
+
+		c.activeSceneId = nextSceneId
 	}
 
-	if !playerFalls && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		c.Player.Jump()
-	}
-
-	c.Player.Update()
 	return nil
 }
 
 func NewCampVenture(loader *resource.Loader) ebiten.Game {
 	return &CampVenture{
-		Player: entities.NewPlayer(loader).(*entities.Player),
+		sceneMap: map[scenes.SceneId]scenes.Scene{
+			scenes.SceneGame: scenes.NewGameScene(loader),
+		},
+		activeSceneId: scenes.SceneGame,
 	}
 }
