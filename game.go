@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/doctorstal/campventure/scenes"
+	"github.com/doctorstal/campventure/tiled"
 	"github.com/hajimehoshi/ebiten/v2"
 	resource "github.com/quasilyte/ebitengine-resource"
 )
@@ -47,10 +48,13 @@ func (c *CampVenture) Update() error {
 	return nil
 }
 
-func NewCampVenture(loader *resource.Loader) ebiten.Game {
+func NewCampVenture(loader *resource.Loader, mapLoader *tiled.Loader) ebiten.Game {
+	gameScene := scenes.NewGameScene(loader, mapLoader)
+	gameScene.FirstLoad()
+	gameScene.OnEnter()
 	return &CampVenture{
 		sceneMap: map[scenes.SceneId]scenes.Scene{
-			scenes.SceneGame: scenes.NewGameScene(loader),
+			scenes.SceneGame: gameScene,
 		},
 		activeSceneId: scenes.SceneGame,
 	}
