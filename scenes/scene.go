@@ -9,6 +9,7 @@ const (
 	SceneGame
 	ScenePause
 	SceneGameOver
+	SceneMapGenerator
 	SceneExit
 )
 

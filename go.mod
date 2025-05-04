@@ -6,6 +6,7 @@ require (
 	github.com/golang/geo v0.0.0-20250421144338-16367f2bbb6a
 	github.com/hajimehoshi/ebiten/v2 v2.8.7
 	github.com/lafriks/go-tiled v0.13.0
+	github.com/ojrac/opensimplex-go v1.0.2
 	github.com/quasilyte/ebitengine-resource v0.5.0
 )
 

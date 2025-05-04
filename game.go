@@ -28,7 +28,13 @@ func (c *CampVenture) Layout(outsideWidth int, outsideHeight int) (screenWidth i
 
 // Update implements ebiten.Game.
 func (c *CampVenture) Update() error {
-	nextSceneId := c.sceneMap[c.activeSceneId].Update()
+	activeScene := c.sceneMap[c.activeSceneId]
+	if !activeScene.IsLoaded() {
+		activeScene.FirstLoad()
+		activeScene.OnEnter()
+	}
+
+	nextSceneId := activeScene.Update()
 	if nextSceneId == scenes.SceneExit {
 		c.sceneMap[c.activeSceneId].OnExit()
 		return ebiten.Termination
@@ -49,13 +55,12 @@ func (c *CampVenture) Update() error {
 }
 
 func NewCampVenture(loader *resource.Loader, mapLoader *tiled.Loader) ebiten.Game {
-	gameScene := scenes.NewGameScene(loader, mapLoader)
-	gameScene.FirstLoad()
-	gameScene.OnEnter()
-	return &CampVenture{
+	cv := &CampVenture{
 		sceneMap: map[scenes.SceneId]scenes.Scene{
-			scenes.SceneGame: gameScene,
+			scenes.SceneGame:         scenes.NewGameScene(loader, mapLoader),
+			scenes.SceneMapGenerator: scenes.NewGeneratorScene(loader),
 		},
-		activeSceneId: scenes.SceneGame,
+		activeSceneId: scenes.SceneMapGenerator,
 	}
+	return cv
 }
