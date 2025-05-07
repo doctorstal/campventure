@@ -20,6 +20,7 @@ type GeneratorScene struct {
 	skyImage    *ebiten.Image
 	grassImage  *ebiten.Image
 
+	dx             float64
 	noise          opensimplex.Noise
 	generatedImage *ebiten.Image
 	loaded         bool
@@ -28,7 +29,7 @@ type GeneratorScene struct {
 // Draw implements Scene.
 func (g *GeneratorScene) Draw(screen *ebiten.Image) {
 	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Scale(2.0, 2.0)
+	opts.GeoM.Scale(3.0, 3.0)
 	screen.DrawImage(g.generatedImage, opts)
 }
 
@@ -38,20 +39,36 @@ func (g *GeneratorScene) FirstLoad() {
 
 	g.generatedImage = ebiten.NewImage(g.w, g.h)
 
-	g.fillImage()
+	g.fillImage(0.0)
 }
 
-func (g *GeneratorScene) fillImage() {
+func (g *GeneratorScene) fillImage(dx float64) {
 	frequency := 3.5
 	threshold := 0.5
 	fade := 0.5
 
 	isSolid := func(x, y int) bool {
-		noiseG := g.noise.Eval2(frequency*float64(x)/float64(g.w), frequency*float64(y)/float64(g.w))
+		worldX := frequency * (dx + float64(x)/float64(g.w))
+		worldY := frequency * float64(y) / float64(g.w)
+		noiseG := g.noise.Eval2(worldX, worldY)
 		return noiseG*(1-fade)+fade*(float64(y)/float64(g.h)) >= threshold
+	}
+	gH := g.grassImage.Bounds().Dx()
+	gW := g.grassImage.Bounds().Dy()
+	drawGrass := func(x int, y int) {
+		gX := (x + int(dx*float64(g.w))) % gW
+
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(float64(x), float64(y-gH))
+		g.generatedImage.DrawImage(
+			g.grassImage.SubImage(image.Rect(gX, 0, gX+1, gH)).(*ebiten.Image),
+			opts,
+		)
 	}
 
 	for x := range g.w {
+		air := 0
+
 		depth := 100
 		for y := range g.h {
 			var c color.Color
@@ -60,23 +77,21 @@ func (g *GeneratorScene) fillImage() {
 				c = g.groundImage.At(x, y)
 
 			} else {
+				if depth > 0 {
+					air = 0
+				}
+				air++
 				depth = 0
 				c = g.skyImage.At(x, y)
 			}
 
 			g.generatedImage.Set(x, y, c)
-			if depth == 10 {
-				gH := g.grassImage.Bounds().Dx()
-				gW := g.grassImage.Bounds().Dy()
-				gX := x % gW
-
-				opts := &ebiten.DrawImageOptions{}
-				opts.GeoM.Translate(float64(x), float64(y-gH))
-				g.generatedImage.DrawImage(
-					g.grassImage.SubImage(image.Rect(gX, 0, gX+1, gH)).(*ebiten.Image),
-					opts,
-				)
+			if depth == 20 {
+				drawGrass(x, y)
 			}
+		}
+		if depth < 20 && depth > 0 {
+			drawGrass(x, g.h+20-depth)
 		}
 	}
 }
@@ -99,7 +114,15 @@ func (g *GeneratorScene) Update() SceneId {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) {
 		g.noise = opensimplex.NewNormalized(rand.Int63())
 
-		g.fillImage()
+		g.fillImage(g.dx)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+		g.dx += 0.01
+		g.fillImage(g.dx)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+		g.dx -= 0.01
+		g.fillImage(g.dx)
 	}
 
 	return SceneMapGenerator
