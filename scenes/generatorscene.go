@@ -17,6 +17,7 @@ import (
 type Generator struct {
 	w, h                       int
 	frequency, fade, threshold float64
+	filling                    bool
 
 	groundImage *ebiten.Image
 	grassImage  *ebiten.Image
@@ -35,16 +36,32 @@ func (g *Generator) RandomizeSeed() {
 
 func (g *Generator) ScrollH(dx int) {
 	g.scrollX += dx
-	// TODO run fillImage in gorutine for smoothness
-	if g.scrollX < 10 {
-		g.scrollX += g.w
-		g.posX -= g.w
-		g.fillImage()
 
-	} else if g.scrollX > 2*g.w-10 {
-		g.scrollX -= g.w
-		g.posX += g.w
-		g.fillImage()
+	// TODO work on jitter when re-generating terrain
+	// Goroutine did not help for some reason, or maybe it's the issue with scroll itself?
+	// Maybe do incremental generation instead?
+	// Also, first time re-fill causes some weird jump - debug
+
+	if !g.filling {
+		const scrollBuffer = 50
+		if g.scrollX < scrollBuffer {
+			g.filling = true
+			go func() {
+				g.fillImage()
+				g.filling = false
+				g.scrollX += g.w
+				g.posX -= g.w
+			}()
+
+		} else if g.scrollX > 2*g.w-scrollBuffer {
+			g.filling = true
+			go func() {
+				g.fillImage()
+				g.filling = false
+				g.scrollX -= g.w
+				g.posX += g.w
+			}()
+		}
 	}
 }
 
@@ -62,8 +79,7 @@ func (g *Generator) IsSolid(x, y int) bool {
 }
 
 func (g *Generator) fillImage() {
-	g.generatedImage.Clear()
-	// g.generatedImage.DrawImage(g.skyImage, nil)
+	newImage := ebiten.NewImage(3*g.w, g.h)
 
 	gH := g.grassImage.Bounds().Dx()
 	gW := g.grassImage.Bounds().Dy()
@@ -73,7 +89,7 @@ func (g *Generator) fillImage() {
 
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x), float64(y-gH))
-		g.generatedImage.DrawImage(
+		newImage.DrawImage(
 			g.grassImage.SubImage(image.Rect(gX, 0, gX+1, gH)).(*ebiten.Image),
 			opts,
 		)
@@ -97,7 +113,7 @@ func (g *Generator) fillImage() {
 				continue
 			}
 
-			g.generatedImage.Set(x, y, c)
+			newImage.Set(x, y, c)
 			if depth == 20 {
 				drawGrass(x, y)
 			}
@@ -106,10 +122,15 @@ func (g *Generator) fillImage() {
 			drawGrass(x, g.h+20-depth)
 		}
 	}
+
+	if g.generatedImage != nil {
+		g.generatedImage.Deallocate()
+	}
+
+	g.generatedImage = newImage
 }
 
 func (g *Generator) FirstLoad() {
-	g.generatedImage = ebiten.NewImage(g.w*3, g.h)
 	g.scrollX = g.w
 	g.fillImage()
 }
