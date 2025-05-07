@@ -1,67 +1,75 @@
 package scenes
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math/rand"
 
 	"github.com/doctorstal/campventure/resources"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/ojrac/opensimplex-go"
 	resource "github.com/quasilyte/ebitengine-resource"
 )
 
-type GeneratorScene struct {
-	w, h   int
-	loader *resource.Loader
+type Generator struct {
+	w, h                       int
+	frequency, fade, threshold float64
 
 	groundImage *ebiten.Image
-	skyImage    *ebiten.Image
 	grassImage  *ebiten.Image
 
-	dx             int
+	posX    int
+	scrollX int
+
 	noise          opensimplex.Noise
 	generatedImage *ebiten.Image
-	loaded         bool
 }
 
-// Draw implements Scene.
-func (g *GeneratorScene) Draw(screen *ebiten.Image) {
-	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Scale(3.0, 3.0)
-	screen.DrawImage(g.generatedImage, opts)
+func (g *Generator) RandomizeSeed() {
+	g.noise = opensimplex.NewNormalized(rand.Int63())
+	g.fillImage()
 }
 
-// FirstLoad implements Scene.
-func (g *GeneratorScene) FirstLoad() {
-	g.loaded = true
+func (g *Generator) ScrollH(dx int) {
+	g.scrollX += dx
+	// TODO run fillImage in gorutine for smoothness
+	if g.scrollX < 10 {
+		g.scrollX += g.w
+		g.posX -= g.w
+		g.fillImage()
 
-	g.generatedImage = ebiten.NewImage(g.w, g.h)
-
-	g.dx = 500
-
-	g.fillImage(g.dx)
-}
-
-func (g *GeneratorScene) fillImage(dx int) {
-	// g.generatedImage.Clear()
-	g.generatedImage.DrawImage(g.skyImage, nil)
-	frequency := 3.5
-	threshold := 0.5
-	fade := 0.5
-
-	isSolid := func(x, y int) bool {
-		worldX := frequency * float64(x+dx) / float64(g.w)
-		worldY := frequency * float64(y) / float64(g.w)
-		noiseG := g.noise.Eval2(worldX, worldY)
-		return noiseG*(1-fade)+fade*(float64(y)/float64(g.h)) >= threshold
+	} else if g.scrollX > 2*g.w-10 {
+		g.scrollX -= g.w
+		g.posX += g.w
+		g.fillImage()
 	}
+}
+
+func (g *Generator) Image() *ebiten.Image {
+	return g.generatedImage.SubImage(
+		image.Rect(g.scrollX, 0, g.scrollX+g.w, g.h),
+	).(*ebiten.Image)
+}
+
+func (g *Generator) IsSolid(x, y int) bool {
+	worldX := g.frequency * float64(x+g.posX) / float64(g.w)
+	worldY := g.frequency * float64(y) / float64(g.w)
+	noiseG := g.noise.Eval2(worldX, worldY)
+	return noiseG*(1-g.fade)+g.fade*(float64(y)/float64(g.h)) >= g.threshold
+}
+
+func (g *Generator) fillImage() {
+	g.generatedImage.Clear()
+	// g.generatedImage.DrawImage(g.skyImage, nil)
+
 	gH := g.grassImage.Bounds().Dx()
 	gW := g.grassImage.Bounds().Dy()
 	giW := g.groundImage.Bounds().Dx()
 	drawGrass := func(x int, y int) {
-		gX := (x + dx) % gW
+		gX := (x + g.posX) % gW
 
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x), float64(y-gH))
@@ -71,22 +79,21 @@ func (g *GeneratorScene) fillImage(dx int) {
 		)
 	}
 
-	for x := range g.w {
+	for x := range g.w * 3 {
 		air := 0
 
 		depth := 100
 		for y := range g.h {
 			var c color.Color
-			if isSolid(x, y) {
+			if g.IsSolid(x, y) {
 				depth++
-				c = g.groundImage.At((x+dx)%giW, y)
+				c = g.groundImage.At((x+g.posX)%giW, y)
 			} else {
 				if depth > 0 {
 					air = 0
 				}
 				air++
 				depth = 0
-				c = g.skyImage.At((x+dx/2)%giW, y)
 				continue
 			}
 
@@ -99,6 +106,53 @@ func (g *GeneratorScene) fillImage(dx int) {
 			drawGrass(x, g.h+20-depth)
 		}
 	}
+}
+
+func (g *Generator) FirstLoad() {
+	g.generatedImage = ebiten.NewImage(g.w*3, g.h)
+	g.scrollX = g.w
+	g.fillImage()
+}
+
+func NewGenerator(loader *resource.Loader, seed int64) *Generator {
+	return &Generator{
+		w:         500,
+		h:         300,
+		frequency: 3.5,
+		threshold: 0.5,
+		fade:      0.5,
+
+		posX: 15000, // far to right, so we can scroll in both directions
+		// TODO find how to loop simplex noise
+		groundImage: loader.LoadImage(resources.ImgGenGround).Data,
+		grassImage:  loader.LoadImage(resources.ImgGenGrass).Data,
+		noise:       opensimplex.NewNormalized(seed),
+	}
+}
+
+type GeneratorScene struct {
+	w, h      int
+	loader    *resource.Loader
+	generator *Generator
+	skyImage  *ebiten.Image
+	loaded    bool
+}
+
+// Draw implements Scene.
+func (g *GeneratorScene) Draw(screen *ebiten.Image) {
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(3.0, 3.0)
+	screen.DrawImage(g.skyImage, opts)
+	screen.DrawImage(g.generator.Image(), opts)
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %f", ebiten.ActualFPS()))
+}
+
+// FirstLoad implements Scene.
+func (g *GeneratorScene) FirstLoad() {
+	g.loaded = true
+	g.generator = NewGenerator(g.loader, 0)
+	g.skyImage = g.loader.LoadImage(resources.ImgGenSky).Data
+	g.generator.FirstLoad()
 }
 
 // IsLoaded implements Scene.
@@ -117,17 +171,13 @@ func (g *GeneratorScene) OnExit() {
 // Update implements Scene.
 func (g *GeneratorScene) Update() SceneId {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) {
-		g.noise = opensimplex.NewNormalized(rand.Int63())
-
-		g.fillImage(g.dx)
+		g.generator.RandomizeSeed()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
-		g.dx += 2
-		g.fillImage(g.dx)
+		g.generator.ScrollH(2)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
-		g.dx -= 2
-		g.fillImage(g.dx)
+		g.generator.ScrollH(-2)
 	}
 
 	return SceneMapGenerator
@@ -135,12 +185,7 @@ func (g *GeneratorScene) Update() SceneId {
 
 func NewGeneratorScene(loader *resource.Loader) Scene {
 	return &GeneratorScene{
-		w:           500,
-		h:           300,
-		skyImage:    loader.LoadImage(resources.ImgGenSky).Data,
-		groundImage: loader.LoadImage(resources.ImgGenGround).Data,
-		grassImage:  loader.LoadImage(resources.ImgGenGrass).Data,
-		loader:      loader,
-		noise:       opensimplex.NewNormalized(2),
+		loader: loader,
+		loaded: false,
 	}
 }
