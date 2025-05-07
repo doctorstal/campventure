@@ -14,6 +14,7 @@ const (
 	ImgPlayerSprite resource.ImageID = iota
 	ImgGenSky
 	ImgGenGround
+	ImgGenGrass
 )
 
 func NewResourceLoader(fs embed.FS, audioContext *audio.Context) *resource.Loader {
@@ -30,6 +31,7 @@ func NewResourceLoader(fs embed.FS, audioContext *audio.Context) *resource.Loade
 		ImgPlayerSprite: {Path: "assets/images/Player.png"},
 		ImgGenSky:       {Path: "assets/images/generator/simplex_terrain_sky.png"},
 		ImgGenGround:    {Path: "assets/images/generator/simplex_terrain_ground.png"},
+		ImgGenGrass:     {Path: "assets/images/generator/grass.png"},
 	})
 
 	return l

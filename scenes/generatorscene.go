@@ -1,6 +1,7 @@
 package scenes
 
 import (
+	"image"
 	"image/color"
 	"math/rand"
 
@@ -17,22 +18,25 @@ type GeneratorScene struct {
 
 	groundImage *ebiten.Image
 	skyImage    *ebiten.Image
+	grassImage  *ebiten.Image
 
-	noise      opensimplex.Noise
-	noiseImage *ebiten.Image
-	loaded     bool
+	noise          opensimplex.Noise
+	generatedImage *ebiten.Image
+	loaded         bool
 }
 
 // Draw implements Scene.
 func (g *GeneratorScene) Draw(screen *ebiten.Image) {
-	screen.DrawImage(g.noiseImage, nil)
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(2.0, 2.0)
+	screen.DrawImage(g.generatedImage, opts)
 }
 
 // FirstLoad implements Scene.
 func (g *GeneratorScene) FirstLoad() {
 	g.loaded = true
 
-	g.noiseImage = ebiten.NewImage(g.w, g.h)
+	g.generatedImage = ebiten.NewImage(g.w, g.h)
 
 	g.fillImage()
 }
@@ -53,17 +57,26 @@ func (g *GeneratorScene) fillImage() {
 			var c color.Color
 			if isSolid(x, y) {
 				depth++
-				if depth <= 10 {
-					c = color.RGBA{33, 99, 66, 1}
-				} else {
-					c = g.groundImage.At(x, y)
-				}
+				c = g.groundImage.At(x, y)
+
 			} else {
 				depth = 0
 				c = g.skyImage.At(x, y)
 			}
 
-			g.noiseImage.Set(x, y, c)
+			g.generatedImage.Set(x, y, c)
+			if depth == 10 {
+				gH := g.grassImage.Bounds().Dx()
+				gW := g.grassImage.Bounds().Dy()
+				gX := x % gW
+
+				opts := &ebiten.DrawImageOptions{}
+				opts.GeoM.Translate(float64(x), float64(y-gH))
+				g.generatedImage.DrawImage(
+					g.grassImage.SubImage(image.Rect(gX, 0, gX+1, gH)).(*ebiten.Image),
+					opts,
+				)
+			}
 		}
 	}
 }
@@ -98,6 +111,7 @@ func NewGeneratorScene(loader *resource.Loader) Scene {
 		h:           300,
 		skyImage:    loader.LoadImage(resources.ImgGenSky).Data,
 		groundImage: loader.LoadImage(resources.ImgGenGround).Data,
+		grassImage:  loader.LoadImage(resources.ImgGenGrass).Data,
 		loader:      loader,
 		noise:       opensimplex.NewNormalized(2),
 	}

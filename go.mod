@@ -1,6 +1,6 @@
 module github.com/doctorstal/campventure
 
-go 1.24.2
+go 1.24.1
 
 require (
 	github.com/golang/geo v0.0.0-20250421144338-16367f2bbb6a
