@@ -20,7 +20,7 @@ type GeneratorScene struct {
 	skyImage    *ebiten.Image
 	grassImage  *ebiten.Image
 
-	dx             float64
+	dx             int
 	noise          opensimplex.Noise
 	generatedImage *ebiten.Image
 	loaded         bool
@@ -39,24 +39,29 @@ func (g *GeneratorScene) FirstLoad() {
 
 	g.generatedImage = ebiten.NewImage(g.w, g.h)
 
-	g.fillImage(0.0)
+	g.dx = 500
+
+	g.fillImage(g.dx)
 }
 
-func (g *GeneratorScene) fillImage(dx float64) {
+func (g *GeneratorScene) fillImage(dx int) {
+	// g.generatedImage.Clear()
+	g.generatedImage.DrawImage(g.skyImage, nil)
 	frequency := 3.5
 	threshold := 0.5
 	fade := 0.5
 
 	isSolid := func(x, y int) bool {
-		worldX := frequency * (dx + float64(x)/float64(g.w))
+		worldX := frequency * float64(x+dx) / float64(g.w)
 		worldY := frequency * float64(y) / float64(g.w)
 		noiseG := g.noise.Eval2(worldX, worldY)
 		return noiseG*(1-fade)+fade*(float64(y)/float64(g.h)) >= threshold
 	}
 	gH := g.grassImage.Bounds().Dx()
 	gW := g.grassImage.Bounds().Dy()
+	giW := g.groundImage.Bounds().Dx()
 	drawGrass := func(x int, y int) {
-		gX := (x + int(dx*float64(g.w))) % gW
+		gX := (x + dx) % gW
 
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x), float64(y-gH))
@@ -74,15 +79,15 @@ func (g *GeneratorScene) fillImage(dx float64) {
 			var c color.Color
 			if isSolid(x, y) {
 				depth++
-				c = g.groundImage.At(x, y)
-
+				c = g.groundImage.At((x+dx)%giW, y)
 			} else {
 				if depth > 0 {
 					air = 0
 				}
 				air++
 				depth = 0
-				c = g.skyImage.At(x, y)
+				c = g.skyImage.At((x+dx/2)%giW, y)
+				continue
 			}
 
 			g.generatedImage.Set(x, y, c)
@@ -117,11 +122,11 @@ func (g *GeneratorScene) Update() SceneId {
 		g.fillImage(g.dx)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
-		g.dx += 0.01
+		g.dx += 2
 		g.fillImage(g.dx)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
-		g.dx -= 0.01
+		g.dx -= 2
 		g.fillImage(g.dx)
 	}
 
