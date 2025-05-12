@@ -31,35 +31,35 @@ type Generator struct {
 
 func (g *Generator) RandomizeSeed() {
 	g.noise = opensimplex.NewNormalized(rand.Int63())
-	g.fillImage()
+	g.fillImage(g.posX)
 }
 
 func (g *Generator) ScrollH(dx int) {
+
 	g.scrollX += dx
 
 	// TODO work on jitter when re-generating terrain
 	// Goroutine did not help for some reason, or maybe it's the issue with scroll itself?
 	// Maybe do incremental generation instead?
-	// Also, first time re-fill causes some weird jump - debug
 
 	if !g.filling {
-		const scrollBuffer = 50
+		const scrollBuffer = 100
 		if g.scrollX < scrollBuffer {
 			g.filling = true
 			go func() {
-				g.fillImage()
+				g.posX -= g.w
+				g.fillImage(g.posX)
 				g.filling = false
 				g.scrollX += g.w
-				g.posX -= g.w
 			}()
 
 		} else if g.scrollX > 2*g.w-scrollBuffer {
 			g.filling = true
 			go func() {
-				g.fillImage()
+				g.posX += g.w
+				g.fillImage(g.posX)
 				g.filling = false
 				g.scrollX -= g.w
-				g.posX += g.w
 			}()
 		}
 	}
@@ -72,20 +72,22 @@ func (g *Generator) Image() *ebiten.Image {
 }
 
 func (g *Generator) IsSolid(x, y int) bool {
-	worldX := g.frequency * float64(x+g.posX) / float64(g.w)
+	worldX := g.frequency * float64(x) / float64(g.w)
 	worldY := g.frequency * float64(y) / float64(g.w)
 	noiseG := g.noise.Eval2(worldX, worldY)
-	return noiseG*(1-g.fade)+g.fade*(float64(y)/float64(g.h)) >= g.threshold
+
+	noiseTransformed := noiseG*(1-g.fade) + g.fade*(float64(y)/float64(g.h))
+	return noiseTransformed >= g.threshold
 }
 
-func (g *Generator) fillImage() {
+func (g *Generator) fillImage(offsetX int) {
 	newImage := ebiten.NewImage(3*g.w, g.h)
 
 	gH := g.grassImage.Bounds().Dx()
 	gW := g.grassImage.Bounds().Dy()
 	giW := g.groundImage.Bounds().Dx()
 	drawGrass := func(x int, y int) {
-		gX := (x + g.posX) % gW
+		gX := (x + offsetX) % gW
 
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x), float64(y-gH))
@@ -101,9 +103,9 @@ func (g *Generator) fillImage() {
 		depth := 100
 		for y := range g.h {
 			var c color.Color
-			if g.IsSolid(x, y) {
+			if g.IsSolid(x+offsetX, y) {
 				depth++
-				c = g.groundImage.At((x+g.posX)%giW, y)
+				c = g.groundImage.At((x+offsetX)%giW, y)
 			} else {
 				if depth > 0 {
 					air = 0
@@ -132,14 +134,14 @@ func (g *Generator) fillImage() {
 
 func (g *Generator) FirstLoad() {
 	g.scrollX = g.w
-	g.fillImage()
+	g.fillImage(g.posX)
 }
 
 func NewGenerator(loader *resource.Loader, seed int64) *Generator {
 	return &Generator{
 		w:         500,
 		h:         300,
-		frequency: 3.5,
+		frequency: 5.5,
 		threshold: 0.5,
 		fade:      0.5,
 
@@ -165,7 +167,8 @@ func (g *GeneratorScene) Draw(screen *ebiten.Image) {
 	opts.GeoM.Scale(3.0, 3.0)
 	screen.DrawImage(g.skyImage, opts)
 	screen.DrawImage(g.generator.Image(), opts)
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %f", ebiten.ActualFPS()))
+	// ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %f", ebiten.ActualFPS()))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Fade: %f", g.generator.fade))
 }
 
 // FirstLoad implements Scene.
@@ -200,6 +203,14 @@ func (g *GeneratorScene) Update() SceneId {
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		g.generator.ScrollH(-2)
 	}
+	// if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+	// 	g.generator.fade += 0.1
+	// 	g.generator.fillImage(g.generator.posX)
+	// }
+	// if ebiten.IsKeyPressed(ebiten.KeyArrowDown) && g.generator.fade > -10.0 {
+	// 	g.generator.fade -= 0.1
+	// 	g.generator.fillImage(g.generator.posX)
+	// }
 
 	return SceneMapGenerator
 }
